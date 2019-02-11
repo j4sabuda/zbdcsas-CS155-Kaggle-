@@ -141,7 +141,23 @@ def save_submission_file(savename, predictions):
     # save file
     np.savetxt(savename, submission_data, fmt=['%i', '%.10f'], header=header, delimiter=',', comments='')
     
+
+def split_data(X_known, y_known, N_train):
+    """
+    Splits data into training and validation sets.
+    """
+    inds = np.arange(0, len(X_known))
+    np.random.shuffle(inds)
+    inds_train = inds[:N_train]
+    inds_valid = inds[N_train:]
+    X_train = X_known[inds_train,:]
+    y_train = y_known[inds_train]
+    X_valid = X_known[inds_valid,:]
+    y_valid = y_known[inds_valid]
     
+    return X_train, y_train, X_valid, y_valid
+
+
 def train_classifiers(classifiers, X_train, y_train):
     """
     Train the classifiers in the given list on the given training data.

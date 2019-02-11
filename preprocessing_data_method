@@ -1,0 +1,32 @@
+def preprocess_data(filename, target=True, columns=None, prefixes=None):
+    """
+    Preprocesses data located under filename.
+    Returns data as input (X) in numpy array.
+    If target is True, also returns last column of data as the target signal (y) in numpy array.
+    One-hot encodes columns given by "columns" and appends the prefixes given by "prefixes" to their values.
+    
+    Processing: 1) removes columns with repeated values 2) one-hot encodes categorical columns
+    """
+    # load data
+    df = pd.read_csv(filename)
+    
+    # remove repeated values
+    for col in df.columns:
+        if len(df[col].unique()) == 1:
+            df.drop(col,inplace=True,axis=1)
+        
+    # one-hot encoding - which columns should we one-hot encode???
+    if (columns is not None) and (prefixes is not None) and (len(columns) == len(prefixes)):
+       df = pd.get_dummies(df, columns=columns, prefixes=prefixes)
+              
+    # get numpy array of values  
+    data = df.values
+    
+    # separate inputs from target signal
+    if target:
+        X = data[:,:-1]
+        y = data[:,-1]
+        return X, y
+    else:
+        X = data
+        return X

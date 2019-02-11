@@ -1,56 +1,61 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Feb 10 18:49:51 2019
+# THIS FILE MUST BE IN THE SAME FOLDER AS KAGGLEMETHODS.PY TO BE ABLE TO LOAD THE REQUIRED FUNCTIONS
 
-@author: Andy
-"""
-import numpy as np
 import pandas as pd
+import numpy as np
 
+import KaggleMethods as KM
+
+from sklearn import tree
+from sklearn.ensemble import AdaBoostClassifier
 from sklearn import datasets
-from sklearn.model_selection import KFold
+from sklearn.model_selection import cross_val_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.ensemble import VotingClassifier
-from sklearn.metrics import roc_auc_score
 
-# load data with pandas because it's fastest (https://softwarerecs.stackexchange.com/questions/7463/fastest-python-library-to-read-a-csv-file)
-df = pd.read_csv('caltech-cs-155-2019-part-1/train_2008.csv')
-# extract only the values to get our data matrix
-data_known = df.values
-# inputs
-X_known = data_known[:,:-1]
-# last column is target signal
-y_known = data_known[:,-1]
+# load the data
+columns = ['HUFINAL', 'HETENURE', 'HEHOUSUT', 'HETELHHD', 'HETELAVL', 'HEPHONEO', 'HRHTYPE',
+          'HUBUS', 'GESTCEN', 'GESTFIPS', 'GTMETSTA', 'PEMARITL', 'PESEX', 'PEAFEVER',
+          'PTDTRACE', 'PRDTHSP', 'PRMARSTA', 'PRCITSHP', 'PEMLR', 'PERET1', 'PRCIVLF',
+          'PREMPHRS', 'PRWKSTAT', 'PRDTIND1', 'PRDTOCC1', 'PRMJIND1']
+prefix = columns
+X_known, y_known, X_test = KM.preprocess_data('caltech-cs-155-2019-part-1/train_2008.csv',
+                                           'caltech-cs-155-2019-part-1/test_2008.csv',
+                                             columns=columns, prefix=prefix)
 
-# number of training samples (< 64667)
+# number of training samples out of known data (remaining are for validation set)
 N_train = 40000
+# split known data into training and validation
+X_train, y_train, X_valid, y_valid = KM.split_data(X_known, y_known, N_train)
 
-# segregate into training and test set TODO shuffle
-X_train = X_known[:N_train,:]
-y_train = y_known[:N_train]
-X_validate = X_known[N_train:,:]
-y_validate = y_known[N_train:]
+# collect clfs
+clfs = []
+############## ADABOOST ####################
+# number of estimators
+n_estimators = np.arange(20,120, 20)
 
-# initialize classifiers list
-classifiers += []
-
-# Logistic regression models
-C_arr = np.linspace(0.1, 5, 10)
+for i in range(len(n_estimators)):
+    clfs += [AdaBoostClassifier(n_estimators=n_estimators[i])]
+    
+#################### Logistic regression models ############
+C_arr = np.linspace(0.1, 5, 5)
+penalties = ['l1', 'l2']
+solver_dict = {'l1':'liblinear', 'l2':'lbfgs'}
 
 for i in range(len(C_arr)):
-    C = C_arr[i]
-    clf = LogisticRegression(solver='lbfgs', multi_class='multinomial',
-                           random_state=1, C=C)
-    classifiers += [clf]
+    for penalty in penalties:
+        C = C_arr[i]
+        solver = solver_dict[penalty]
+        clf = LogisticRegression(solver=solver, penalty=penalty, C=C)
+        clfs += [clf]
 
-# Gaussian Naive Bayes
-classifiers += [GaussianNB()]
+########### Gaussian Naive Bayes ####################
+clfs += [GaussianNB()]
 
-# random forest
+#################### random forest #################
 min_samples_split_arr = np.array([2,8,32])
-min_samples_leaf_arr = np.array([1,4,16])
+min_samples_leaf_arr = np.array([2,8,32])
 n_estimators_arr = np.array([10, 30, 100])
 
 for i in range(len(min_samples_split_arr)):
@@ -61,29 +66,30 @@ for i in range(len(min_samples_split_arr)):
             n_estimators = n_estimators_arr[k]
             clf = RandomForestClassifier(min_samples_split=min_samples_split, min_samples_leaf=min_samples_leaf,
                                          n_estimators=n_estimators, random_state=1)
-            classifiers += [clf]
+            clfs += [clf]
 
-# number of estimators to add to ensemble
-n_iter = 3
+############### REGULARIZED REGRESSION ################
+from sklearn.linear_model import Ridge, Lasso
 
-# predictions on validation set
-predictions = np.zeros([n_iter, len(y_validate)])
+alpha = np.linspace(0.5, 5, 5)
+normalize = [True, False]
 
-# train sample models on cross validated sets from training set
-for i in range(len(classifiers)):
-    clf = classifiers[i]
-    clf.fit(X_train, y_train)
-    
-# loop through predictions on validation set and greedily add to create ensemble
-for i in range(n_iter):
-    for j in range(len(classifiers)):
-        clf = classifiers[j]
-        predictions[i] = clf.predict(X_validate)
-        y_pred = np.mean(predictions[:i+1], axis=0)
-        auc = roc_auc_score(y_validate, y_pred)
-        print('auc = %f for classifier %i, iteration %i' % (auc, j, i))
-        if auc > max_auc:
-            new_clf_index = j
-            max_auc = auc
-    
-    predictions[i] = classifiers[j].predict(X_validate)
+for i in range(len(alpha)):
+    for j in range(len(normalize)):
+        clfs += [Ridge(alpha=alpha[i], normalize=normalize[j])]
+        clfs += [Lasso(alpha=alpha[i], normalize=normalize[j])]
+
+# train
+KM.train_classifiers(clfs, X_train, y_train)
+
+# ensemble selection
+n_warm_start = 5
+n_iter = 20
+ensemble_clf_inds, ensemble_pred = KM.ensemble_selection(clfs, X_valid, y_valid, n_iter, 
+                                                         n_warm_start=n_warm_start)
+
+# predict for test data
+y_pred = KM.ensemble_prediction(clfs, ensemble_clf_inds, X_test)
+
+# save file
+KM.save_submission_file('submission3.csv', y_pred)

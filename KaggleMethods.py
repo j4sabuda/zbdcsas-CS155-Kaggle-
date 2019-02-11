@@ -35,7 +35,7 @@ def ensemble_prediction(trained_classifiers, ensemble_clf_inds, X_test):
     return y_pred
 
 
-def ensemble_selection(trained_classifiers, X_validate, y_validate, n_iter):
+def ensemble_selection(trained_classifiers, X_valid, y_valid, n_iter):
     """
     Performs greedy ensemble selection by adding the classifier that improves the AUC 
     over the validation set (X_validate and y_validate) when added to the ensemble until
@@ -56,7 +56,7 @@ def ensemble_selection(trained_classifiers, X_validate, y_validate, n_iter):
     ensemble_clf_inds = np.zeros([n_iter])
     
     # number of samples
-    N = len(y_validate)
+    N = len(y_valid)
     
     # initalize array to store predictions of each model in the ensemble
     ensemble_pred = np.zeros([n_iter, N])
@@ -73,13 +73,13 @@ def ensemble_selection(trained_classifiers, X_validate, y_validate, n_iter):
             clf = trained_classifiers[j]
             
             # add result of current classifier to the ensemble
-            ensemble_pred[i] = clf.predict(X_validate)
+            ensemble_pred[i] = clf.predict(X_valid)
             
             # average predictions of ensemble for scoring
             y_pred = np.mean(ensemble_pred[:i+1], axis=0)
             
             # score ensemble
-            auc = roc_auc_score(y_validate, y_pred)
+            auc = roc_auc_score(y_valid, y_pred)
             print('auc = %f for classifier %i, iteration %i' % (auc, j, i))
             
             # store model if it outperforms previous models
@@ -90,12 +90,12 @@ def ensemble_selection(trained_classifiers, X_validate, y_validate, n_iter):
         # record the index of the selected model
         ensemble_clf_inds[i] = best_clf_index
         # add predictions of best model to ensemble
-        ensemble_pred[i] = trained_classifiers[best_clf_index].predict(X_validate)
+        ensemble_pred[i] = trained_classifiers[best_clf_index].predict(X_valid)
     
     return ensemble_clf_inds, ensemble_pred
 
 
-def preprocess_data(filename_train, filename_test, columns=None, prefixes=None):
+def preprocess_data(filename_train, filename_test, columns=None, prefix=None):
     """
     Preprocesses data located under filename.
     Returns data as input (X).
@@ -115,9 +115,9 @@ def preprocess_data(filename_train, filename_test, columns=None, prefixes=None):
             df_test.drop(col, inplace=True, axis=1)
         
     # one-hot encoding - which columns should we one-hot encode???
-    if (columns is not None) and (prefixes is not None) and (len(columns) == len(prefixes)):
-        df_train = pd.get_dummies(df_train, columns=columns, prefixes=prefixes)
-        df_test = pd.get_dummies(df_train, columns=columns, prefixes=prefixes)
+    if (columns is not None) and (prefix is not None) and (len(columns) == len(prefix)):
+        df_train = pd.get_dummies(df_train, columns=columns, prefix=prefix)
+        df_test = pd.get_dummies(df_test, columns=columns, prefix=prefix)
         
     # get numpy array of values  
     X_train = df_train.values[:,:-1]

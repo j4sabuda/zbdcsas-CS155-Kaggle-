@@ -1,0 +1,89 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Feb 10 18:49:51 2019
+
+@author: Andy
+"""
+import numpy as np
+import pandas as pd
+
+from sklearn import datasets
+from sklearn.model_selection import KFold
+from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import GaussianNB
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import VotingClassifier
+from sklearn.metrics import roc_auc_score
+
+# load data with pandas because it's fastest (https://softwarerecs.stackexchange.com/questions/7463/fastest-python-library-to-read-a-csv-file)
+df = pd.read_csv('caltech-cs-155-2019-part-1/train_2008.csv')
+# extract only the values to get our data matrix
+data_known = df.values
+# inputs
+X_known = data_known[:,:-1]
+# last column is target signal
+y_known = data_known[:,-1]
+
+# number of training samples (< 64667)
+N_train = 40000
+
+# segregate into training and test set TODO shuffle
+X_train = X_known[:N_train,:]
+y_train = y_known[:N_train]
+X_validate = X_known[N_train:,:]
+y_validate = y_known[N_train:]
+
+# initialize classifiers list
+classifiers += []
+
+# Logistic regression models
+C_arr = np.linspace(0.1, 5, 10)
+
+for i in range(len(C_arr)):
+    C = C_arr[i]
+    clf = LogisticRegression(solver='lbfgs', multi_class='multinomial',
+                           random_state=1, C=C)
+    classifiers += [clf]
+
+# Gaussian Naive Bayes
+classifiers += [GaussianNB()]
+
+# random forest
+min_samples_split_arr = np.array([2,8,32])
+min_samples_leaf_arr = np.array([1,4,16])
+n_estimators_arr = np.array([10, 30, 100])
+
+for i in range(len(min_samples_split_arr)):
+    for j in range(len(min_samples_leaf_arr)):
+        for k in range(len(n_estimators_arr)):
+            min_samples_split = min_samples_split_arr[i]
+            min_samples_leaf = min_samples_leaf_arr[j]
+            n_estimators = n_estimators_arr[k]
+            clf = RandomForestClassifier(min_samples_split=min_samples_split, min_samples_leaf=min_samples_leaf,
+                                         n_estimators=n_estimators, random_state=1)
+            classifiers += [clf]
+
+# number of estimators to add to ensemble
+n_iter = 3
+
+# predictions on validation set
+predictions = np.zeros([n_iter, len(y_validate)])
+
+# train sample models on cross validated sets from training set
+for i in range(len(classifiers)):
+    clf = classifiers[i]
+    clf.fit(X_train, y_train)
+    
+# loop through predictions on validation set and greedily add to create ensemble
+for i in range(n_iter):
+    for j in range(len(classifiers)):
+        clf = classifiers[j]
+        predictions[i] = clf.predict(X_validate)
+        y_pred = np.mean(predictions[:i+1], axis=0)
+        auc = roc_auc_score(y_validate, y_pred)
+        print('auc = %f for classifier %i, iteration %i' % (auc, j, i))
+        if auc > max_auc:
+            new_clf_index = j
+            max_auc = auc
+    
+    predictions[i] = classifiers[j].predict(X_validate)

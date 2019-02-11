@@ -17,7 +17,35 @@ from sklearn.ensemble import VotingClassifier
 from sklearn.metrics import roc_auc_score
 
 
-def ensemble_prediction(trained_classifiers, ensemble_clf_inds, X_test):
+def add_missing_columns(df1, df2, default_val=0):
+    """
+    Adds columns missing from either dataframe so they have the same columns.
+    Added columns are given the default value.
+    """
+    # extract columns
+    c1 = df1.columns
+    c2 = df2.columns
+    
+    # record missing columns for data frame 1
+    c1_missing = [c2[i] for i in range(len(c2)) if c2[i] not in c1]
+    # add them into the data frame 1
+    for c in c1_missing:
+        df1[c] = default_val
+     
+    # record missing columns for data frame 2
+    c2_missing = [c1[i] for i in range(len(c1)) if c1[i] not in c2]
+    # add them into the data frame 2
+    for c in c2_missing:
+        df2[c] = default_val
+    
+    # ensure the same ordering of the columns
+    new_cols = df1.columns
+    df2 = df2[new_cols]
+         
+    return df1, df2
+
+
+def ensemble_prediction(trained_clfs, ensemble_clf_inds, X_test):
     """
     Makes prediction of target signal for test data.
     """
@@ -26,16 +54,20 @@ def ensemble_prediction(trained_classifiers, ensemble_clf_inds, X_test):
     N = len(X_test)
     pred = np.zeros([n_iter, N])
     for i in range(n_iter):
-        clf = trained_classifiers[ensemble_clf_inds[i]]
+        clf = trained_clfs[ensemble_clf_inds[i]]
         pred[i,:] = clf.predict(X_test)
         
     # predict by averaging results
     y_pred = np.mean(pred, axis=0)
     
+    # ensure values are between 0 and 1
+    y_pred[y_pred < 0] = 0
+    y_pred[y_pred > 1] = 1
+    
     return y_pred
 
 
-def ensemble_selection(trained_classifiers, X_valid, y_valid, n_iter):
+def ensemble_selection(trained_clfs, X_valid, y_valid, n_iter, n_warm_start=0):
     """
     Performs greedy ensemble selection by adding the classifier that improves the AUC 
     over the validation set (X_validate and y_validate) when added to the ensemble until
@@ -52,6 +84,7 @@ def ensemble_selection(trained_classifiers, X_valid, y_valid, n_iter):
     returns : numpy array of indices of classifiers selected for the ensemble and numpy array of the 
     predictions of the selected models
     """
+    assert n_warm_start < n_iter, 'cannot warm start with more models than iterations.'
     # list of indices of the classifiers selected for the ensemble
     ensemble_clf_inds = np.zeros([n_iter])
     
@@ -61,16 +94,32 @@ def ensemble_selection(trained_classifiers, X_valid, y_valid, n_iter):
     # initalize array to store predictions of each model in the ensemble
     ensemble_pred = np.zeros([n_iter, N])
     
+    # warm start by adding n_warm_start models with best performance
+    # data structure to store performance of each classifier
+    auc_arr = np.zeros([len(trained_clfs)])
+    for i in range(len(trained_clfs)):
+        clf = trained_clfs[i]
+        auc_arr[i] = roc_auc_score(y_valid, clf.predict(X_valid))
+        
+    # get indices of models with best performance        
+    inds_sort = np.argsort(auc_arr)
+    top_n = inds_sort[-n_warm_start:][::-1]
+    
+    # add best n_warm_start models up front
+    for i in range(n_warm_start):
+        ensemble_clf_inds[i] = top_n[i]
+        ensemble_pred[i] = trained_clfs[top_n[i]].predict(X_valid)
+        
     # loop through predictions on validation set and greedily add to create ensemble
-    for i in range(n_iter):
+    for i in range(n_warm_start, n_iter):
         
         # store index of best classifier and its AUC score
         best_clf_index = 0
         max_auc = 0
         
         # loop through all classifiers
-        for j in range(len(trained_classifiers)):
-            clf = trained_classifiers[j]
+        for j in range(len(trained_clfs)):
+            clf = trained_clfs[j]
             
             # add result of current classifier to the ensemble
             ensemble_pred[i] = clf.predict(X_valid)
@@ -80,7 +129,7 @@ def ensemble_selection(trained_classifiers, X_valid, y_valid, n_iter):
             
             # score ensemble
             auc = roc_auc_score(y_valid, y_pred)
-            print('auc = %f for classifier %i, iteration %i' % (auc, j, i))
+            print('auc = %f for classifier %i, iteration %i' % (auc, j+1, i+1))
             
             # store model if it outperforms previous models
             if auc > max_auc:
@@ -90,7 +139,7 @@ def ensemble_selection(trained_classifiers, X_valid, y_valid, n_iter):
         # record the index of the selected model
         ensemble_clf_inds[i] = best_clf_index
         # add predictions of best model to ensemble
-        ensemble_pred[i] = trained_classifiers[best_clf_index].predict(X_valid)
+        ensemble_pred[i] = trained_clfs[best_clf_index].predict(X_valid)
     
     return ensemble_clf_inds, ensemble_pred
 
@@ -107,21 +156,26 @@ def preprocess_data(filename_train, filename_test, columns=None, prefix=None):
     # load data
     df_train = pd.read_csv(filename_train)
     df_test = pd.read_csv(filename_test)
-    
+        
     # remove columns with single value in training set from both training and test data
     for col in df_train.columns:
         if len(df_train[col].unique()) == 1:
             df_train.drop(col, inplace=True, axis=1)
             df_test.drop(col, inplace=True, axis=1)
+
+    # extract target signal and remove from data frame
+    y_train = df_train.values[:,-1]
+    df_train.drop('target', inplace=True, axis=1)
         
     # one-hot encoding - which columns should we one-hot encode???
     if (columns is not None) and (prefix is not None) and (len(columns) == len(prefix)):
         df_train = pd.get_dummies(df_train, columns=columns, prefix=prefix)
         df_test = pd.get_dummies(df_test, columns=columns, prefix=prefix)
         
+    df_train, df_test = add_missing_columns(df_train, df_test)
+        
     # get numpy array of values  
-    X_train = df_train.values[:,:-1]
-    y_train = df_train.values[:,-1]
+    X_train = df_train.values
     X_test = df_test.values
     
     return X_train, y_train, X_test

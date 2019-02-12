@@ -8,6 +8,7 @@ Created on Sun Feb 10 22:37:38 2019
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from sklearn import datasets
 from sklearn.model_selection import KFold
@@ -211,7 +212,20 @@ def plot_learning_curve(Y_pred, y_true, savefig=False, savename='learning_curve.
     if savefig:
         plt.savefig(savename, bbox_inches="tight")
     
+
+def plot_jitter_plot(datafile='jitter_data.csv', savefig=False, 
+                     savename='jitter_plot.pdf', jitter=0.08):
+    """
+    Plots jitter plot of AUC scores of different model classes.
+    """
+    # load jitter plot data
+    data = pd.read_csv('jitter_data.csv')
+    # jitter plot
+    sns.stripplot(x='Model', y='AUC', data=data, jitter=jitter)
     
+    if savefig:
+        plt.savefig(savename, bbox_inches="tight")
+
 def preprocess_data(filename_train, filename_test, columns=None, prefix=None):
     """
     Preprocesses data located under filename.
@@ -249,6 +263,15 @@ def preprocess_data(filename_train, filename_test, columns=None, prefix=None):
     return X_train, y_train, X_test
 
 
+def save_jitter_data(labels, auc_arr, savename='jitter_data.csv'):
+    """
+    Saves data for jitter plot.
+    """
+    df_auc = pd.DataFrame()
+    df_auc['Model'] = labels
+    df_auc['AUC'] = auc_arr
+    df_auc.to_csv(savename)
+
 def save_submission_file(savename, predictions):
     """
     Creates .csv file of predictions for submission to Kaggle competition.
@@ -263,6 +286,20 @@ def save_submission_file(savename, predictions):
     # save file
     np.savetxt(savename, submission_data, fmt=['%i', '%.10f'], header=header, delimiter=',', comments='')
     
+
+def score_auc_on_clfs(clfs, X_valid, y_valid):
+    """
+    Scores classifiers on validation set and returns numpy array of AUCs.
+    """
+    auc_arr = np.zeros([len(clfs)])
+    for i in range(len(clfs)):
+        clf = clfs[i]
+        y_pred = clf.predict(X_valid)
+        print('scored model %i' % (i+1))
+        auc_arr[i] = roc_auc_score(y_valid, y_pred)
+        
+    return auc_arr
+
 
 def split_data(X_known, y_known, N_train):
     """

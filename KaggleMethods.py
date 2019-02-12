@@ -67,7 +67,16 @@ def ensemble_prediction(trained_clfs, ensemble_clf_inds, X_test):
     return y_pred
 
 
-def ensemble_selection(trained_clfs, X_valid, y_valid, n_iter, n_warm_start=0):
+from sklearn import datasets
+from sklearn.model_selection import KFold
+from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import GaussianNB
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import VotingClassifier
+from sklearn.metrics import roc_auc_score
+
+def ensemble_selection(trained_clfs, X_valid, y_valid, n_iter, n_warm_start=0,
+                       percent_prune=0, tol=1E-4):
     """
     Performs greedy ensemble selection by adding the classifier that improves the AUC 
     over the validation set (X_validate and y_validate) when added to the ensemble until
@@ -80,11 +89,20 @@ def ensemble_selection(trained_clfs, X_valid, y_valid, n_iter, n_warm_start=0):
     y_validate : D x 1 array of validation data's true target signal.
     n_iter : number of iterations of ensemble selection to build the ensemble, and thus the number of 
     ensembles added.
+    n_warm_start : number of models to add to initial ensemble based on highest
+        performance on their own
+    percent_prune : percent of models in sample to prune before ensemble selection;
+        worst percent_prune% of models will thus not be considered by the model
+    tol : tolerance to determine early-stopping. If adding another model does not
+        improve the score by at least the tolerance, ensemble selection will stop early.
     
     returns : numpy array of indices of classifiers selected for the ensemble and numpy array of the 
     predictions of the selected models
     """
     assert n_warm_start < n_iter, 'cannot warm start with more models than iterations.'
+    assert percent_prune >= 0, 'percent of models to prune must be non-negative.'
+    assert percent_prune < 1, 'not all models can be pruned.'
+    
     # list of indices of the classifiers selected for the ensemble
     ensemble_clf_inds = np.zeros([n_iter])
     
@@ -109,17 +127,24 @@ def ensemble_selection(trained_clfs, X_valid, y_valid, n_iter, n_warm_start=0):
     for i in range(n_warm_start):
         ensemble_clf_inds[i] = top_n[i]
         ensemble_pred[i] = trained_clfs[top_n[i]].predict(X_valid)
-        
+       
+    # PRUNING
+    n_models = len(inds_sort)
+    n_prune = int(percent_prune * n_models)
+    inds_keep = inds_sort[n_prune:]
+    trained_clfs_pruned = [trained_clfs[i] for i in range(n_models) if i in inds_keep]
+    
+    # store best score
+    max_auc = 0
     # loop through predictions on validation set and greedily add to create ensemble
     for i in range(n_warm_start, n_iter):
         
         # store index of best classifier and its AUC score
         best_clf_index = 0
-        max_auc = 0
-        
+        diff = 0
         # loop through all classifiers
-        for j in range(len(trained_clfs)):
-            clf = trained_clfs[j]
+        for j in range(len(trained_clfs_pruned)):
+            clf = trained_clfs_pruned[j]
             
             # add result of current classifier to the ensemble
             ensemble_pred[i] = clf.predict(X_valid)
@@ -133,14 +158,25 @@ def ensemble_selection(trained_clfs, X_valid, y_valid, n_iter, n_warm_start=0):
             
             # store model if it outperforms previous models
             if auc > max_auc:
+                # update difference from previous maximum
+                diff += auc - max_auc
+                # store index of high-performing model
                 best_clf_index = j
+                # update new max score
                 max_auc = auc
-
+                
         # record the index of the selected model
         ensemble_clf_inds[i] = best_clf_index
         # add predictions of best model to ensemble
-        ensemble_pred[i] = trained_clfs[best_clf_index].predict(X_valid)
+        ensemble_pred[i] = trained_clfs_pruned[best_clf_index].predict(X_valid)
     
+        # check if improvement is above tolerance
+        if diff <= tol:
+            print('improvement is below tolerance. stopping early at iteration %i.' % (i+1))
+            ensemble_clf_inds = ensemble_clf_inds[:i+1]
+            ensemble_pred = ensemble_pred[:i+1,:]
+            break
+            
     return ensemble_clf_inds, ensemble_pred
 
 

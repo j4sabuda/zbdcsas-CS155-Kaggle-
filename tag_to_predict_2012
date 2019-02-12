@@ -1,0 +1,19 @@
+from importlib import reload
+reload(KM)
+
+# load the data
+columns = ['HUFINAL', 'HETENURE', 'HEHOUSUT', 'HETELHHD', 'HETELAVL', 'HEPHONEO', 'HRHTYPE',
+          'HUBUS', 'GESTCEN', 'GESTFIPS', 'GTMETSTA', 'PEMARITL', 'PESEX', 'PEAFEVER',
+          'PTDTRACE', 'PRDTHSP', 'PRMARSTA', 'PRCITSHP', 'PEMLR', 'PERET1', 'PRCIVLF',
+          'PREMPHRS', 'PRWKSTAT', 'PRDTIND1', 'PRDTOCC1', 'PRMJIND1']
+
+X_test_2012 = KM.load_2012_data('caltech-cs-155-2019-part-1/train_2008.csv',
+                               'caltech-cs-155-2019-part-1/test_2008.csv',
+                               'caltech-cs-155-2019-part-2/test_2012.csv', columns)
+
+# predict for test data
+y_pred_2012 = KM.ensemble_prediction(clfs, ensemble_clf_inds, X_test_2012)
+
+
+# save file
+KM.save_submission_file('submission_2012.csv', y_pred_2012)

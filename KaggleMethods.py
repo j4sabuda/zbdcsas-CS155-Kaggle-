@@ -7,6 +7,7 @@ Created on Sun Feb 10 22:37:38 2019
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from sklearn import datasets
 from sklearn.model_selection import KFold
@@ -180,6 +181,37 @@ def ensemble_selection(trained_clfs, X_valid, y_valid, n_iter, n_warm_start=0,
     return ensemble_clf_inds, ensemble_pred
 
 
+def plot_learning_curve(Y_pred, y_true, savefig=False, savename='learning_curve.pdf'):
+    """
+    Plots the learning curve based on the predictions made at each iteration of
+    the ensemble.
+    Y_pred : n x N array, where n is the number of iterations for making the
+        ensemble (number of models added to the ensemble) and N is the number 
+        of samples. Each row is a prediction at that iteration.
+    y_true : N x 1 array of true predictions
+    
+    Plots the AUC vs. number of iterations using matplotlib.pyplot
+    """
+    # number of iterations to make ensemble
+    n = len(Y_pred)
+    # initialize array to store scores
+    auc_arr = np.zeros([n])
+    # score each prediction
+    for i in range(n):
+        y_pred = np.mean(Y_pred[:i+1], axis=0)
+        auc_arr[i] = roc_auc_score(y_true, y_pred)
+        
+    # plot score
+    plt.figure()
+    plt.plot(auc_arr)
+    plt.xlabel('number of iterations')
+    plt.ylabel('AUC')
+    plt.title('Learning Curve of Ensemble Selection')
+    
+    if savefig:
+        plt.savefig(savename, bbox_inches="tight")
+    
+    
 def preprocess_data(filename_train, filename_test, columns=None, prefix=None):
     """
     Preprocesses data located under filename.

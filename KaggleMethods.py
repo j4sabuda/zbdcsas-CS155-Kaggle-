@@ -181,6 +181,40 @@ def ensemble_selection(trained_clfs, X_valid, y_valid, n_iter, n_warm_start=0,
             
     return ensemble_clf_inds, ensemble_pred
 
+def load_2012_data(train_2008_file, test_2008_file, test_2012_file,
+                         columns):
+    """
+    Loads 2012 test data in same format as 2008 training and test data so
+    prediction can be run on it.
+    """
+    ret1, ret2, X_test_2008, df_train_2008a, df_test_2008 = preprocess_data(
+    train_2008_file, test_2008_file, columns=columns, prefix=columns, 
+    return_dfs=True)
+
+    ret1, ret2, X_test_2012, df_train_2008b, df_test_2012 = preprocess_data(
+    train_2008_file, test_2012_file, columns=columns, prefix=columns,
+    return_dfs=True)
+
+    cols_2008 = df_test_2008.columns
+    cols_2012 = df_test_2012.columns
+    
+    # drop all columns in 2012 that are not in 2008
+    for i in range(len(cols_2012)):
+        col = cols_2012[i]
+        if col not in cols_2008:
+            df_test_2012.drop(col, inplace=True, axis=1)
+    
+    cols_2012_cut = df_test_2012.columns
+    # add columns to 2012 test set that are in 2008
+    for i in range(len(cols_2008)):
+        col = cols_2008[i]
+        if col not in cols_2012_cut:
+            df_test_2012[col] = 0
+        
+    X_test_2012 = df_test_2012.values
+    
+    return X_test_2012
+
 
 def plot_learning_curve(Y_pred, y_true, savefig=False, savename='learning_curve.pdf'):
     """
@@ -226,7 +260,8 @@ def plot_jitter_plot(datafile='jitter_data.csv', savefig=False,
     if savefig:
         plt.savefig(savename, bbox_inches="tight")
 
-def preprocess_data(filename_train, filename_test, columns=None, prefix=None):
+def preprocess_data(filename_train, filename_test, columns=None, prefix=None,
+                    return_dfs=False, remove_id=False):
     """
     Preprocesses data located under filename.
     Returns data as input (X).
@@ -256,12 +291,19 @@ def preprocess_data(filename_train, filename_test, columns=None, prefix=None):
         
     df_train, df_test = add_missing_columns(df_train, df_test)
         
-    # get numpy array of values  
+    # get numpy array of values  (without id) 
     X_train = df_train.values
     X_test = df_test.values
     
-    return X_train, y_train, X_test
-
+    if remove_id:
+        X_train = X_train[:,1:]
+        X_test = X_test[:,1:]
+    
+    if return_dfs:
+        return X_train, y_train, X_test, df_train, df_test
+    else:
+        return X_train, y_train, X_test
+    
 
 def save_jitter_data(labels, auc_arr, savename='jitter_data.csv'):
     """

@@ -30,7 +30,7 @@ X_known, y_known, X_test = KM.preprocess_data('caltech-cs-155-2019-part-1/train_
                                              columns=columns, prefix=prefix)
 
 # number of training samples out of known data (remaining are for validation set)
-N_train = 40000
+N_train = 50000
 # split known data into training and validation
 X_train, y_train, X_valid, y_valid = KM.split_data(X_known, y_known, N_train)
 
@@ -70,9 +70,9 @@ for i in range(len(C_arr)):
 clfs += [GaussianNB()]
 
 #################### random forest #################
-min_samples_split_arr = np.array([1,2,8,32])
-min_samples_leaf_arr = np.array([1,2,8,32])
-n_estimators_arr = np.array([10, 30, 100, 300])
+min_samples_split_arr = np.array([2,8,32])
+min_samples_leaf_arr = np.array([2,8,32])
+n_estimators_arr = np.array([100, 200, 400, 500])
 
 for i in range(len(min_samples_split_arr)):
     for j in range(len(min_samples_leaf_arr)):
@@ -94,7 +94,74 @@ for i in range(len(alpha)):
     for j in range(len(normalize)):
         clfs += [Ridge(alpha=alpha[i], normalize=normalize[j])]
         clfs += [Lasso(alpha=alpha[i], normalize=normalize[j])]
+          
+#######################Neural Network##########################
+'''
+y_train_hot = np.empty([0, 2])
+X_train_hot = X_train
 
+for i in range(0, y_train.size):
+	y_train_hot = np.vstack((y_train_hot, to_categorical(y_train[i], 2)))
+    
+y_val_hot = np.empty([0, 2])
+X_val_hot = X_valid
+
+for i in range(0, y_valid.size):
+	y_val_hot = np.vstack((y_val_hot, to_categorical(y_valid[i], 2)))
+
+#Create Model
+model = Sequential()
+
+model.add(Dense(1000, input_shape=(676,)))
+model.add(Activation('relu'))
+model.add(Dropout(0.4))
+
+model.add(Dense(500))
+model.add(Activation('relu'))
+model.add(Dropout(0.4))
+
+model.add(Dense(250))
+model.add(Activation('relu'))
+model.add(Dropout(0.4))
+
+model.add(Dense(125))
+model.add(Activation('relu'))
+model.add(Dropout(0.4))
+
+model.add(Dense(60))
+model.add(Activation('relu'))
+model.add(Dropout(0.4))
+
+model.add(Dense(20))
+model.add(Activation('relu'))
+model.add(Dropout(0.4))
+
+model.add(Dense(200))
+model.add(Activation('relu'))
+model.add(Dropout(0.4))
+
+model.add(Dense(400))
+model.add(Activation('relu'))
+model.add(Dropout(0.4))
+
+
+#Final Layer
+model.add(Dense(2))
+model.add(Activation('softmax'))
+
+	## Printing a summary of the layers and weights in your model
+model.summary()
+
+	#rmsprop and adam optimizers
+model.compile(loss='sparse_categorical_crossentropy',optimizer='rmsprop', metrics=['accuracy'])
+	
+batchSize = 100
+
+#fit = model.fit(X_train_hot, y_train_hot, batch_size=batchSize, nb_epoch=20,
+#    verbose=1)
+
+clfs += [model]
+'''
 
 ###############################################################################
 # train
